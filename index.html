@@ -3,139 +3,349 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PPOB Price List</title>
+    <title>Atlantic H2H - Price List</title>
     <style>
-        /* [Styles sama seperti sebelumnya] */
-        /* ... */
+        :root {
+            --primary: #2C3E50;
+            --secondary: #2980B9;
+            --success: #27AE60;
+            --danger: #E74C3C;
+            --text: #333333;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #F8F9FA;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .filter-input {
+            width: 100%;
+            padding: 0.8rem;
+            border: 2px solid #E0E0E0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--secondary);
+        }
+
+        .price-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            padding: 1rem 0;
+        }
+
+        .price-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .price-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+
+        .product-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .available {
+            background: rgba(39, 174, 96, 0.1);
+            color: var(--success);
+        }
+
+        .empty {
+            background: rgba(231, 76, 60, 0.1);
+            color: var(--danger);
+        }
+
+        .product-image {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.95);
+            place-items: center;
+            z-index: 1000;
+        }
+
+        .error-card {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 2rem;
+            background: rgba(231, 76, 60, 0.05);
+            border: 1px solid rgba(231, 76, 60, 0.2);
+            border-radius: 12px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>Daftar Harga PPOB</h1>
-            <p class="warning">🚨 JANGAN SHARE KODE INI - API KEY TEREXPOS!</p>
-        </div>
-        
+        <header class="header">
+            <h1>🛒 Price List PPOB</h1>
+            <p>Harga terupdate real-time dari Atlantic H2H</p>
+        </header>
+
         <div class="filters">
-            <select id="typeSelect" disabled>
-                <option>Memuat jenis layanan...</option>
+            <select id="typeFilter" class="filter-input">
+                <option value="">Semua Tipe</option>
+                <option value="prabayar">Prabayar</option>
+                <option value="pascabayar">Pascabayar</option>
             </select>
-            <input type="text" id="searchInput" placeholder="Cari berdasarkan kode..." disabled>
+            <input type="text" 
+                   id="searchInput" 
+                   class="filter-input" 
+                   placeholder="Cari produk/layanan...">
         </div>
-        
-        <div id="loading">Memuat data...</div>
-        <div class="price-list" id="priceList"></div>
+
+        <div class="loading-overlay" id="loader">
+            <div class="spinner">🔄 Memuat data...</div>
+        </div>
+
+        <div class="price-grid" id="priceContainer"></div>
     </div>
 
     <script>
-        // ==============================================
-        // ⚠️ PERINGATAN KEAMANAN:
-        // JANGAN SIMPAN API KEY DI FRONTEND!
-        // ==============================================
-        const API_CONFIG = {
-            KEY: 'ptoG0GHf8rYRytErN7mCUeTDWZ1MhZjpjk726xTVxSvB2LicBug6MZXLw70aSw3sX2ZAbo5sdoMqrHXNTpkYPjnMfLwnWy4KBYJv',
-            URL: 'https://api-ppob-domain.com/layanan/price_list',
-            TYPES: [] // Akan diisi dari API
+        // ======================
+        // CONFIGURASI
+        // ======================
+        const CONFIG = {
+            API_BASE: 'https://atlantich2h.com/api/v1',
+            ENDPOINTS: {
+                PRICE_LIST: '/pricelist'
+            },
+            TIMEOUT: 15000,
+            RETRY_COUNT: 2
         };
 
-        // Inisialisasi
-        let isInitialLoad = true;
+        // ======================
+        // STATE MANAGEMENT
+        // ======================
+        let state = {
+            loading: false,
+            currentRequest: null,
+            retryAttempt: 0
+        };
 
-        // Fungsi utama
-        async function init() {
+        // ======================
+        // DOM ELEMENTS
+        // ======================
+        const elements = {
+            typeFilter: document.getElementById('typeFilter'),
+            searchInput: document.getElementById('searchInput'),
+            priceContainer: document.getElementById('priceContainer'),
+            loader: document.getElementById('loader')
+        };
+
+        // ======================
+        // FORMATTERS
+        // ======================
+        const currencyFormatter = new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            maximumFractionDigits: 0
+        });
+
+        // ======================
+        // FETCH CONTROLLER
+        // ======================
+        const controller = new AbortController();
+        
+        // ======================
+        // CORE FUNCTIONS
+        // ======================
+        async function fetchPriceList(params = {}) {
+            if (state.loading) return;
+            if (state.currentRequest) state.currentRequest.abort();
+
+            state.loading = true;
+            updateLoader(true);
+
+            const url = new URL(CONFIG.ENDPOINTS.PRICE_LIST, CONFIG.API_BASE);
+            url.search = new URLSearchParams(params).toString();
+
+            const request = new Request(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': 'ptoG0GHf8rYRytErN7mCUeTDWZ1MhZjpjk726xTVxSvB2LicBug6MZXLw70aSw3sX2ZAbo5sdoMqrHXNTpkYPjnMfLwnWy4KBYJv'  // 🔒 Ganti dengan API key valid
+                },
+                signal: controller.signal
+            });
+
             try {
-                // 1. Ambil jenis layanan tersedia
-                await loadServiceTypes();
+                const timeoutId = setTimeout(
+                    () => controller.abort(),
+                    CONFIG.TIMEOUT
+                );
+
+                const response = await fetch(request);
+                clearTimeout(timeoutId);
+
+                if (!response.ok) throw new Error(response.statusText);
                 
-                // 2. Aktifkan form
-                document.getElementById('searchInput').disabled = false;
-                
-                // 3. Load data awal
-                await updatePriceList();
-            } catch (error) {
-                showError(`Gagal inisialisasi: ${error.message}`);
-            }
-        }
-
-        // Ambil jenis layanan dari API
-        async function loadServiceTypes() {
-            const response = await fetchData('prabayar');
-            
-            // Ekstrak semua jenis unik dari data
-            const types = [...new Set(response.data.map(item => item.type))];
-            API_CONFIG.TYPES = types;
-            
-            // Update dropdown
-            const typeSelect = document.getElementById('typeSelect');
-            typeSelect.innerHTML = types.map(type => 
-                `<option value="${type}">${type.toUpperCase()}</option>`
-            ).join('');
-            typeSelect.disabled = false;
-        }
-
-        async function fetchData(type, code = '') {
-            const formData = new URLSearchParams();
-            formData.append('api_key', API_CONFIG.KEY);
-            formData.append('type', type);
-            if(code) formData.append('code', code);
-
-            try {
-                const response = await fetch(API_CONFIG.URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formData
-                });
-
-                // Validasi response
-                const contentType = response.headers.get('content-type');
-                if (!contentType.includes('application/json')) {
-                    const text = await response.text();
-                    throw new Error(`Invalid response: ${text.slice(0, 50)}...`);
-                }
-
                 const data = await response.json();
-                
-                if (!data.status) {
-                    throw new Error(data.message || 'Unknown API error');
-                }
+                handleResponse(data);
 
-                return data;
             } catch (error) {
-                console.error('API Error:', error);
-                showError(`API Error: ${error.message}`);
-                return null;
+                handleError(error);
+            } finally {
+                state.loading = false;
+                updateLoader(false);
             }
         }
 
-        // [Fungsi renderPriceList, formatCurrency, showError, debounce sama seperti sebelumnya]
-        // ...
-
-        async function updatePriceList() {
-            const type = document.getElementById('typeSelect').value;
-            const search = document.getElementById('searchInput').value.trim();
+        // ======================
+        // HANDLERS
+        // ======================
+        function handleResponse(data) {
+            if (!data || !data.success) {
+                throw new Error(data?.message || 'Invalid response format');
+            }
             
-            // Skip initial load
-            if (isInitialLoad) {
-                isInitialLoad = false;
+            elements.priceContainer.innerHTML = data.data
+                .map(item => createPriceCard(item))
+                .join('');
+        }
+
+        function handleError(error) {
+            console.error('API Error:', error);
+            
+            if (state.retryAttempt < CONFIG.RETRY_COUNT) {
+                state.retryAttempt++;
+                setTimeout(() => fetchPriceList(), 1000 * state.retryAttempt);
                 return;
             }
 
-            const loading = document.getElementById('loading');
-            loading.style.display = 'block';
-            
-            const response = await fetchData(type, search);
-            loading.style.display = 'none';
-            
-            if (response) {
-                renderPriceList(response.data, type);
-            }
+            elements.priceContainer.innerHTML = `
+                <div class="error-card">
+                    <h3>⚠️ Gagal Memuat Data</h3>
+                    <p>${error.message || 'Kesalahan jaringan'}</p>
+                    <button onclick="location.reload()">Coba Lagi</button>
+                </div>
+            `;
         }
 
-        // Event listeners
-        document.getElementById('typeSelect').addEventListener('change', updatePriceList);
-        document.getElementById('searchInput').addEventListener('input', debounce(updatePriceList, 300));
+        // ======================
+        // UI FUNCTIONS
+        // ======================
+        function createPriceCard(item) {
+            return `
+                <div class="price-card">
+                    <div class="product-badge ${item.status}">
+                        ${item.status.toUpperCase()}
+                    </div>
+                    
+                    ${item.image_url ? `
+                        <img src="${item.image_url}" 
+                             alt="${item.name}" 
+                             class="product-image"
+                             loading="lazy">` 
+                             : ''}
+                    
+                    <h3>${item.name}</h3>
+                    <div class="price-value">
+                        ${currencyFormatter.format(item.price)}
+                    </div>
+                    
+                    <div class="product-meta">
+                        <p><strong>Kode:</strong> ${item.code}</p>
+                        <p><strong>Provider:</strong> ${item.provider}</p>
+                        ${item.category ? `<p><strong>Kategori:</strong> ${item.category}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }
 
-        // Start
+        function updateLoader(show) {
+            elements.loader.style.display = show ? 'grid' : 'none';
+        }
+
+        // ======================
+        // EVENT HANDLERS
+        // ======================
+        function setupEventListeners() {
+            let searchTimeout;
+            
+            // Filter change
+            elements.typeFilter.addEventListener('change', () => {
+                fetchPriceList({
+                    type: elements.typeFilter.value,
+                    search: elements.searchInput.value
+                });
+            });
+
+            // Search input
+            elements.searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    fetchPriceList({
+                        type: elements.typeFilter.value,
+                        search: e.target.value
+                    });
+                }, 500);
+            });
+        }
+
+        // ======================
+        // INITIALIZATION
+        // ======================
+        function init() {
+            setupEventListeners();
+            fetchPriceList();
+        }
+
+        // Start application
         init();
     </script>
 </body>
