@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPOB Price List</title>
+    <style>
+        /* [Styles sama seperti sebelumnya] */
+        /* ... */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Daftar Harga PPOB</h1>
+            <p class="warning">🚨 JANGAN SHARE KODE INI - API KEY TEREXPOS!</p>
+        </div>
+        
+        <div class="filters">
+            <select id="typeSelect" disabled>
+                <option>Memuat jenis layanan...</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Cari berdasarkan kode..." disabled>
+        </div>
+        
+        <div id="loading">Memuat data...</div>
+        <div class="price-list" id="priceList"></div>
+    </div>
+
+    <script>
+        // ==============================================
+        // ⚠️ PERINGATAN KEAMANAN:
+        // JANGAN SIMPAN API KEY DI FRONTEND!
+        // ==============================================
+        const API_CONFIG = {
+            KEY: 'ptoG0GHf8rYRytErN7mCUeTDWZ1MhZjpjk726xTVxSvB2LicBug6MZXLw70aSw3sX2ZAbo5sdoMqrHXNTpkYPjnMfLwnWy4KBYJv',
+            URL: 'https://api-ppob-domain.com/layanan/price_list',
+            TYPES: [] // Akan diisi dari API
+        };
+
+        // Inisialisasi
+        let isInitialLoad = true;
+
+        // Fungsi utama
+        async function init() {
+            try {
+                // 1. Ambil jenis layanan tersedia
+                await loadServiceTypes();
+                
+                // 2. Aktifkan form
+                document.getElementById('searchInput').disabled = false;
+                
+                // 3. Load data awal
+                await updatePriceList();
+            } catch (error) {
+                showError(`Gagal inisialisasi: ${error.message}`);
+            }
+        }
+
+        // Ambil jenis layanan dari API
+        async function loadServiceTypes() {
+            const response = await fetchData('prabayar');
+            
+            // Ekstrak semua jenis unik dari data
+            const types = [...new Set(response.data.map(item => item.type))];
+            API_CONFIG.TYPES = types;
+            
+            // Update dropdown
+            const typeSelect = document.getElementById('typeSelect');
+            typeSelect.innerHTML = types.map(type => 
+                `<option value="${type}">${type.toUpperCase()}</option>`
+            ).join('');
+            typeSelect.disabled = false;
+        }
+
+        async function fetchData(type, code = '') {
+            const formData = new URLSearchParams();
+            formData.append('api_key', API_CONFIG.KEY);
+            formData.append('type', type);
+            if(code) formData.append('code', code);
+
+            try {
+                const response = await fetch(API_CONFIG.URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+
+                // Validasi response
+                const contentType = response.headers.get('content-type');
+                if (!contentType.includes('application/json')) {
+                    const text = await response.text();
+                    throw new Error(`Invalid response: ${text.slice(0, 50)}...`);
+                }
+
+                const data = await response.json();
+                
+                if (!data.status) {
+                    throw new Error(data.message || 'Unknown API error');
+                }
+
+                return data;
+            } catch (error) {
+                console.error('API Error:', error);
+                showError(`API Error: ${error.message}`);
+                return null;
+            }
+        }
+
+        // [Fungsi renderPriceList, formatCurrency, showError, debounce sama seperti sebelumnya]
+        // ...
+
+        async function updatePriceList() {
+            const type = document.getElementById('typeSelect').value;
+            const search = document.getElementById('searchInput').value.trim();
+            
+            // Skip initial load
+            if (isInitialLoad) {
+                isInitialLoad = false;
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            
+            const response = await fetchData(type, search);
+            loading.style.display = 'none';
+            
+            if (response) {
+                renderPriceList(response.data, type);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('typeSelect').addEventListener('change', updatePriceList);
+        document.getElementById('searchInput').addEventListener('input', debounce(updatePriceList, 300));
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
