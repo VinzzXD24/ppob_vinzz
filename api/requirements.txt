@@ -1,0 +1,5 @@
+real-esrgan==0.3.0
+torch>=1.8.0
+pillow>=9.0.0
+numpy>=1.22.0
+python-multipart
